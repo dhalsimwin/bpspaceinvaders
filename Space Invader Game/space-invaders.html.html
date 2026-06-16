@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Space Invaders (Final Version)</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+<style>
+  body {
+    margin: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    height: 100vh;
+    user-select: none;
+    font-family: "Press Start 2P", monospace;
+    color: #0f0;
+  }
+
+  #ui {
+    width: 600px;
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0 4px 0;
+    font-size: 14px;
+  }
+
+  canvas {
+    background: #111;
+    border: 2px solid #0f0;
+    image-rendering: pixelated;
+  }
+
+  #highScoreDisplay {
+    margin-top: 10px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  #shieldReady {
+    margin-top: 20px;
+    font-size: 12px;
+    color: #0af;
+    display: none;
+    text-align: center;
+  }
+
+  #bars {
+    width: 600px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    font-size: 10px;
+    margin-top: 10px;
+  }
+
+  .bar-label {
+    font-size: 10px;
+    margin-bottom: 3px;
+  }
+
+  .bar-container {
+    width: 100%;
+    height: 12px;
+    background: #222;
+    border: 1px solid #0f0;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: #0f0;
+    width: 0%;
+  }
+
+  #restartBtn {
+    margin-top: 15px;
+    padding: 10px 25px;
+    background: #0f0;
+    border: 3px solid #030;
+    font-size: 16px;
+    cursor: pointer;
+    display: none;
+    font-family: "Press Start 2P", monospace;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div id="leftUI">SCORE: 0</div>
+  <div id="centerUI">WAVE</div>
+  <div id="rightUI">LEVEL: 1 | LIVES: 3</div>
+</div>
+
+<canvas id="game" width="600" height="600"></canvas>
+
+<div id="highScoreDisplay">HIGH SCORE: 0 — NONE</div>
+
+<div id="shieldReady">SHIELD READY — PRESS S TO USE</div>
+
+<div id="bars">
+  <div>
+    <div class="bar-label">RAPID FIRE</div>
+    <div class="bar-container"><div class="bar-fill" id="rapidBar"></div></div>
+  </div>
+
+  <div>
+    <div class="bar-label">TRIPLE SHOT</div>
+    <div class="bar-container"><div class="bar-fill" id="tripleBar"></div></div>
+  </div>
+
+  <div>
+    <div class="bar-label">SLO-MO</div>
+    <div class="bar-container"><div class="bar-fill" id="slowBar"></div></div>
+  </div>
+</div>
+
+<button id="restartBtn">RESTART</button>
+
+<script>
+//
+// CANVAS + UI REFERENCES
+//
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const uiScore = document.getElementById("leftUI");
+const uiWave = document.getElementById("centerUI");
+const uiLevel = document.getElementById("rightUI");
+
+const rapidBar = document.getElementById("rapidBar");
+const tripleBar = document.getElementById("tripleBar");
+const slowBar = document.getElementById("slowBar");
+
+const shieldReadyText = document.getElementById("shieldReady");
+const highScoreDisplay = document.getElementById("highScoreDisplay");
+
+const restartBtn = document.getElementById("restartBtn");
+
+const W = canvas.width;
+const H = canvas.height;
+
+//
+// HIGH SCORE SYSTEM
+//
+
+let highScore = 0;
+let highScoreName = "NONE";
+
+if (localStorage.getItem("si_highscore")) {
+  highScore = parseInt(localStorage.getItem("si_highscore"));
+  highScoreName = localStorage.getItem("si_highscore_name") || "NONE";
+}
+
+function updateHighScoreDisplay() {
+  highScoreDisplay.textContent = `HIGH SCORE: ${highScore} — ${highScoreName}`;
+}
+
+updateHighScoreDisplay();
+
+//
+// AUDIO
+//
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playBeep(freq, duration, type="square", volume=0.25) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = volume;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+function sndShoot() { playBeep(900, 0.07, "square", 0.25); }
+function sndEnemyShoot() { playBeep(500, 0.12, "sawtooth", 0.2); }
+function sndHit() { playBeep(120, 0.05, "square", 0.6); }
+function sndDeath() { playBeep(80, 0.25, "triangle", 0.3); }
+function sndPower() { playBeep(700, 0.12, "triangle", 0.35); }
+
+let musicInterval = null;
+
+function startMusic() {
+    if (musicInterval) return;
+    musicInterval = setInterval(() => {
+        playBeep(220, 0.1, "square", 0.075);
+        setTimeout(() => playBeep(330, 0.1, "square", 0.075), 120);
+        setTimeout(() => playBeep(180, 0.1, "square", 0.075), 240);
+    }, 400);
+}
+
+function stopMusic() {
+    if (!musicInterval) return;
+    clearInterval(musicInterval);
+    musicInterval = null;
+}
+
+document.addEventListener("keydown", startMusic);
+document.addEventListener("click", startMusic);
+
+//
+// SPRITES
+//
+
+const playerSprite = [
+"00000100000",
+"00001110000",
+"00011111000",
+"00111111100",
+"01111111110",
+"11111111111",
+"00111111100",
+"00010001000"
+];
+
+const enemy1 = [
+"00011111000",
+"00100000100",
+"01011011010",
+"01111111110",
+"11111111111",
+"10111111101",
+"00100000100",
+"01000000010"
+];
+
+const enemy2 = [
+"00011111000",
+"00100000100",
+"01011011010",
+"01111111110",
+"11111111111",
+"11011110110",
+"00100000100",
+"00010001000"
+];
+
+const bulletSprite = ["010","111","111","111","010","010"];
+const enemyBulletSprite = ["010","010","111","010","010"];
+
+// POWER-UP SPRITES (FIXED)
+const puRapidSprite = ["00100","01110","11111","01110","00100"];
+const puLifeSprite = ["010010","111111","111111","011110","001100"];
+const puTripleSprite = ["00100","01110","10101","00100","00100"];
+const puShieldSprite = ["01110","10001","10001","11111","01110"];
+const puSlowSprite = ["00100","01110","11111","01110","00100"];
+
+//
+// BARRIER SHAPE
+//
+
+const barrierSprite = [
+"000000111111000000",
+"000011111111110000",
+"001111111111111100",
+"011111111111111110",
+"111111111111111111",
+"111111111111111111",
+"111111100001111111",
+"111111000000111111",
+"111110000000011111",
+"111100000000001111",
+"111000000000000111",
+"110000000000000011"
+];
+//
+// GAME STATE
+//
+
+let player, bullets, enemyBullets, invaders;
+let dx, dy, gameOver, lives, frameToggle, lastFrameSwitch;
+let score = 0;
+let level = 1;
+
+let baseDx = 0.6;
+let fireChanceBase = 0.001;
+let fireChance = fireChanceBase;
+
+let mode = "normal";
+let boss = null;
+let bossMinions = [];
+let bossType = 1;
+
+let powerUps = [];
+let lastPowerUpTime = 0;
+let powerUpIntervalMin = 15000;
+let powerUpIntervalMax = 25000;
+
+let rapidEnergy = 0;
+let rapidActive = false;
+const rapidDrainPerShot = 1 / 60;
+
+let tripleActive = false;
+let tripleTimer = 0;
+const tripleDuration = 15000;
+
+let shieldCharges = 0;
+let shieldActive = false;
+let shieldTimer = 0;
+const shieldDuration = 5000;
+
+let slowActive = false;
+let slowTimer = 0;
+const slowDuration = 15000;
+let slowFactor = 1.0;
+
+let barriers = [];
+
+//
+// BARRIERS
+//
+
+function createBarrierGrid(sprite) {
+  const grid = [];
+  for (let r = 0; r < sprite.length; r++) {
+    const row = [];
+    for (let c = 0; c < sprite[r].length; c++) {
+      row.push(sprite[r][c] === "1" ? 1 : 0);
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+function createBarriers() {
+  barriers = [];
+
+  const ps = 3;
+  const bw = barrierSprite[0].length * ps;
+  const spacing = (W - 4 * bw) / 5;
+
+  for (let i = 0; i < 4; i++) {
+    const x = spacing + i * (bw + spacing);
+    const y = H - 220;
+
+    barriers.push({
+      x,
+      y,
+      pixelSize: ps,
+      grid: createBarrierGrid(barrierSprite)
+    });
+  }
+}
+
+function bulletHitsBarrier(bullet) {
+  for (let b = 0; b < barriers.length; b++) {
+    const barrier = barriers[b];
+
+    const relX = bullet.x - barrier.x;
+    const relY = bullet.y - barrier.y;
+
+    if (relX < 0 || relY < 0) continue;
+
+    const c = Math.floor(relX / barrier.pixelSize);
+    const r = Math.floor(relY / barrier.pixelSize);
+
+    if (
+      r >= 0 && r < barrier.grid.length &&
+      c >= 0 && c < barrier.grid[0].length
+    ) {
+      if (barrier.grid[r][c] === 1) {
+
+    // destroy a 3×3 chunk around the hit pixel
+    for (let rr = r - 1; rr <= r + 1; rr++) {
+        for (let cc = c - 1; cc <= c + 1; cc++) {
+            if (
+                rr >= 0 && rr < barrier.grid.length &&
+                cc >= 0 && cc < barrier.grid[0].length
+            ) {
+                barrier.grid[rr][cc] = 0;
+            }
+        }
+    }
+
+    return true;
+}
+
+    }
+  }
+  return false;
+}
+
+//
+// LEVEL SETUP
+//
+
+function setupNormalLevel() {
+  invaders = [];
+  const rows = 4, cols = 8;
+  const invW = 11 * 4;
+  const invH = 8 * 4;
+  const padding = 20;
+
+  const offsetTop = 40;
+  const offsetLeft = 40;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      invaders.push({
+        x: offsetLeft + c * (invW + padding),
+        y: offsetTop + r * (invH + padding),
+        w: invW,
+        h: invH,
+        alive: true
+      });
+    }
+  }
+
+  dx = baseDx + (level - 1) * 0.2;
+  dy = 20;
+  fireChance = fireChanceBase + (level - 1) * 0.0003;
+
+  boss = null;
+  bossMinions = [];
+  mode = "normal";
+
+  createBarriers();
+}
+
+function setupBossLevel() {
+  invaders = [];
+  bullets = [];
+  enemyBullets = [];
+
+  bossType = ((Math.floor(level / 5) - 1) % 4) + 1;
+
+  if (bossType === 1) {
+    boss = { x: W/2-80, y:120, w:160, h:80, hp:25, maxHp:25, speedX:1, speedY:0.2, shootRate:0.015 };
+  } else if (bossType === 2) {
+    boss = { x: W/2-70, y:120, w:140, h:70, hp:20, maxHp:20, speedX:1.2, speedY:0.15, shootRate:0.012 };
+    bossMinions = [];
+    const mW = 11*4, mH = 8*4;
+    bossMinions.push({ x: boss.x - mW - 10, y: boss.y + boss.h + 10, w:mW, h:mH, alive:true });
+    bossMinions.push({ x: boss.x + boss.w + 10, y: boss.y + boss.h + 10, w:mW, h:mH, alive:true });
+    bossMinions.push({ x: boss.x - mW - 10, y: boss.y - mH - 10, w:mW, h:mH, alive:true });
+    bossMinions.push({ x: boss.x + boss.w + 10, y: boss.y - mH - 10, w:mW, h:mH, alive:true });
+  } else if (bossType === 3) {
+    boss = { x: W/2-60, y:120, w:120, h:60, hp:15, maxHp:15, speedX:2.5, speedY:0.25, shootRate:0.02 };
+  } else if (bossType === 4) {
+    boss = { x:0, y:120, w:140, h:60, hp:18, maxHp:18, speedX:2, speedY:0, shootRate:0.018 };
+  }
+
+  mode = "boss";
+
+  createBarriers();
+}
+
+function setupLevel() {
+  if (level % 5 === 0) setupBossLevel();
+  else setupNormalLevel();
+}
+
+//
+// INIT (RESTORED)
+//
+
+function init() {
+  level = 1;
+
+  player = {
+    x: W/2 - 20,
+    y: H - 100,
+    w: 11*4,
+    h: 8*4,
+    speed: 6,
+    canShoot: true,
+    baseCooldown: 375,
+    cooldown: 375
+  };
+
+  bullets = [];
+  enemyBullets = [];
+  score = 0;
+  lives = 3;
+  gameOver = false;
+
+  frameToggle = false;
+  lastFrameSwitch = 0;
+
+  setupLevel();
+
+  uiScore.textContent = "SCORE: " + score;
+  uiLevel.textContent = "LEVEL: " + level + " | LIVES: " + lives;
+  uiWave.textContent = mode === "boss" ? "BOSS" : "WAVE";
+
+  lastPowerUpTime = performance.now();
+
+  restartBtn.style.display = "none";
+}
+
+//
+// INPUT
+//
+
+let left = false, right = false, space = false, shieldKey = false;
+
+document.addEventListener("keydown", e => {
+  if (e.code === "ArrowLeft") left = true;
+  if (e.code === "ArrowRight") right = true;
+  if (e.code === "Space") space = true;
+  if (e.code === "KeyS") shieldKey = true;
+});
+
+document.addEventListener("keyup", e => {
+  if (e.code === "ArrowLeft") left = false;
+  if (e.code === "ArrowRight") right = false;
+  if (e.code === "Space") space = false;
+  if (e.code === "KeyS") shieldKey = false;
+});
+
+//
+// POWER-UPS
+//
+
+function spawnPowerUp(now) {
+  if (mode === "boss") return;
+
+  const elapsed = now - lastPowerUpTime;
+  const interval = powerUpIntervalMin + Math.random() * (powerUpIntervalMax - powerUpIntervalMin);
+  if (elapsed < interval) return;
+
+  lastPowerUpTime = now;
+
+  const r = Math.random();
+  let type;
+  if (r < 0.30) type = "rapid";
+  else if (r < 0.50) type = "life";
+  else if (r < 0.70) type = "triple";
+  else if (r < 0.90) type = "shield";
+  else type = "slow";
+
+  const size = 5 * 3;
+  const x = 20 + Math.random() * (W - 40 - size);
+  const y = -size;
+
+  powerUps.push({
+    x,
+    y,
+    w: size,
+    h: size,
+    type,
+    speed: 1.2
+  });
+}
+
+function applyPowerUp(pu) {
+  sndPower();
+
+  if (pu.type === "rapid") {
+    rapidEnergy = 1;
+    rapidActive = true;
+  } else if (pu.type === "life") {
+    lives = Math.min(5, lives + 1);
+  } else if (pu.type === "triple") {
+    tripleActive = true;
+    tripleTimer = tripleDuration;
+  } else if (pu.type === "shield") {
+    shieldCharges = Math.min(3, (shieldCharges || 0) + 1);
+  } else if (pu.type === "slow") {
+    slowActive = true;
+    slowTimer = slowDuration;
+    slowFactor = 0.3;
+  }
+}
+
+function updatePowerUps(delta) {
+  powerUps.forEach((p, i) => {
+    p.y += p.speed;
+    if (p.y > H + 20) {
+      powerUps.splice(i, 1);
+      return;
+    }
+
+    const box = { x: p.x, y: p.y, w: p.w, h: p.h };
+    const playerBox = { x: player.x, y: player.y, w: player.w, h: player.h };
+    if (collide(box, playerBox)) {
+      applyPowerUp(p);
+      powerUps.splice(i, 1);
+    }
+  });
+}
+
+//
+// COLLISION
+//
+
+function collide(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+//
+// SHOOTING
+//
+
+function shoot() {
+  if (!player.canShoot) return;
+
+  const baseBullet = () => ({
+    x: player.x + player.w/2 - 6,
+    y: player.y,
+    w: 3*4,
+    h: 6*4,
+    speed: 8
+  });
+
+  if (tripleActive) {
+    const b1 = baseBullet();
+    const b2 = baseBullet();
+    const b3 = baseBullet();
+    b2.x -= 10;
+    b3.x += 10;
+    bullets.push(b1, b2, b3);
+  } else {
+    bullets.push(baseBullet());
+  }
+
+  sndShoot();
+
+  if (rapidActive && rapidEnergy > 0) {
+    player.cooldown = player.baseCooldown * 0.25;
+    rapidEnergy -= rapidDrainPerShot;
+    if (rapidEnergy <= 0) {
+      rapidEnergy = 0;
+      rapidActive = false;
+    }
+  } else {
+    player.cooldown = player.baseCooldown;
+  }
+
+  player.canShoot = false;
+  setTimeout(() => player.canShoot = true, player.cooldown);
+}
+
+//
+// ENEMY SHOOTING
+//
+
+function enemyShoot(inv) {
+  enemyBullets.push({
+    x: inv.x + inv.w/2 - 6,
+    y: inv.y + inv.h,
+    w: 3*4,
+    h: 6*4,
+    speed: 4 * slowFactor
+  });
+  sndEnemyShoot();
+}
+
+function enemyShootBoss() {
+  if (!boss) return;
+  enemyBullets.push({
+    x: boss.x + boss.w/2 - 6,
+    y: boss.y + boss.h,
+    w: 3*4,
+    h: 6*4,
+    speed: 5 * slowFactor
+  });
+  sndEnemyShoot();
+}
+
+//
+// UPDATE NORMAL LEVEL
+//
+
+function updateNormal(timestamp) {
+  let hitEdge = false;
+
+  invaders.forEach(inv => {
+    if (!inv.alive) return;
+    inv.x += dx * slowFactor;
+    if (inv.x <= 0 || inv.x + inv.w >= W) hitEdge = true;
+  });
+
+  if (hitEdge) {
+    dx *= -1;
+    invaders.forEach(inv => {
+      if (!inv.alive) return;
+      inv.y += dy;
+      if (inv.y + inv.h >= player.y) gameOver = true;
+    });
+  }
+
+  invaders.forEach(inv => {
+    if (inv.alive && Math.random() < fireChance * slowFactor) enemyShoot(inv);
+  });
+
+  bullets.forEach((b, bi) => {
+    invaders.forEach(inv => {
+      if (!inv.alive) return;
+      if (collide(b, inv)) {
+        inv.alive = false;
+        bullets.splice(bi, 1);
+        score += 100;
+        sndHit();
+      }
+    });
+  });
+
+  if (invaders.every(i => !i.alive)) {
+    level++;
+    bullets = [];
+    enemyBullets = [];
+    setupLevel();
+  }
+}
+
+//
+// UPDATE BOSS LEVEL
+//
+
+function updateBoss(timestamp) {
+  if (!boss) return;
+
+  boss.x += boss.speedX * slowFactor;
+  boss.y += boss.speedY * slowFactor;
+
+  if (boss.x <= 0 || boss.x + boss.w >= W) boss.speedX *= -1;
+
+  if (bossType !== 4 && boss.y + boss.h >= player.y) gameOver = true;
+
+  if (Math.random() < boss.shootRate * slowFactor) enemyShootBoss();
+
+  bossMinions.forEach(m => {
+    if (!m.alive) return;
+    if (Math.random() < 0.002 * slowFactor) {
+      enemyBullets.push({
+        x: m.x + m.w/2 - 6,
+        y: m.y + m.h,
+        w: 3*4,
+        h: 6*4,
+        speed: 4 * slowFactor
+      });
+      sndEnemyShoot();
+    }
+  });
+
+  bullets.forEach((b, bi) => {
+    if (boss && collide(b, boss)) {
+      bullets.splice(bi, 1);
+      boss.hp--;
+      score += 250;
+      sndHit();
+      if (boss.hp <= 0) {
+        sndDeath();
+        level++;
+        bullets = [];
+        enemyBullets = [];
+        boss = null;
+        bossMinions = [];
+        setupLevel();
+      }
+    } else {
+      bossMinions.forEach(m => {
+        if (!m.alive) return;
+        if (collide(b, m)) {
+          m.alive = false;
+          bullets.splice(bi, 1);
+          score += 150;
+          sndHit();
+        }
+      });
+    }
+  });
+}
+
+//
+// UPDATE LOOP
+//
+
+function update(timestamp) {
+  if (gameOver) return;
+
+  if (timestamp - lastFrameSwitch > 300) {
+    frameToggle = !frameToggle;
+    lastFrameSwitch = timestamp;
+  }
+
+  const delta = 16;
+
+  if (left) player.x -= player.speed;
+  if (right) player.x += player.speed;
+  player.x = Math.max(0, Math.min(W - player.w, player.x));
+
+  if (space) shoot();
+
+  if (shieldKey && !shieldActive && shieldCharges > 0) {
+    shieldActive = true;
+    shieldTimer = shieldDuration;
+    shieldCharges--;
+  }
+
+  bullets.forEach((b, i) => {
+    b.y -= b.speed;
+
+    if (bulletHitsBarrier(b)) {
+      bullets.splice(i, 1);
+      return;
+    }
+
+    if (b.y < -20) bullets.splice(i, 1);
+  });
+
+  enemyBullets.forEach((b, i) => {
+    b.y += b.speed;
+
+    if (bulletHitsBarrier(b)) {
+      enemyBullets.splice(i, 1);
+      return;
+    }
+
+    if (b.y > H + 20) {
+      enemyBullets.splice(i, 1);
+      return;
+    }
+
+    if (!shieldActive && collide(b, player)) {
+      enemyBullets.splice(i, 1);
+      lives--;
+      sndHit();
+      if (lives <= 0) {
+        sndDeath();
+        gameOver = true;
+	checkHighScore();
+      }
+    }
+  });
+
+  if (tripleActive) {
+    tripleTimer -= delta;
+    if (tripleTimer <= 0) {
+      tripleActive = false;
+      tripleTimer = 0;
+    }
+  }
+
+  if (shieldActive) {
+    shieldTimer -= delta;
+    if (shieldTimer <= 0) {
+      shieldActive = false;
+      shieldTimer = 0;
+    }
+  }
+
+  if (slowActive) {
+    slowTimer -= delta;
+    if (slowTimer <= 0) {
+      slowActive = false;
+      slowTimer = 0;
+      slowFactor = 1.0;
+    }
+  }
+
+  spawnPowerUp(timestamp);
+  updatePowerUps(delta);
+
+  if (mode === "normal") updateNormal(timestamp);
+  else updateBoss(timestamp);
+
+  uiScore.textContent = "SCORE: " + score;
+  uiLevel.textContent = "LEVEL: " + level + " | LIVES: " + lives;
+  uiWave.textContent = mode === "boss" ? "BOSS" : "WAVE";
+
+  shieldReadyText.style.display =
+    (!shieldActive && shieldCharges > 0) ? "block" : "none";
+
+  rapidBar.style.width = (rapidEnergy * 100) + "%";
+  tripleBar.style.width = tripleActive ? (tripleTimer / tripleDuration * 100) + "%" : "0%";
+  slowBar.style.width = slowActive ? (slowTimer / slowDuration * 100) + "%" : "0%";
+}
+
+//
+// HIGH SCORE CHECK
+//
+
+function checkHighScore() {
+  if (score > highScore) {
+    const name = prompt("NEW HIGH SCORE! Enter your name:");
+    highScore = score;
+    highScoreName = name || "UNKNOWN";
+
+    localStorage.setItem("si_highscore", highScore);
+    localStorage.setItem("si_highscore_name", highScoreName);
+
+    updateHighScoreDisplay();
+  }
+}
+
+//
+// DRAWING
+//
+
+function drawSprite(sprite, x, y, scale, color) {
+  ctx.fillStyle = color;
+  for (let r = 0; r < sprite.length; r++) {
+    for (let c = 0; c < sprite[r].length; c++) {
+      if (sprite[r][c] === "1") {
+        ctx.fillRect(x + c * scale, y + r * scale, scale, scale);
+      }
+    }
+  }
+}
+
+function drawBarriers() {
+  barriers.forEach(barrier => {
+    const ps = barrier.pixelSize;
+    for (let r = 0; r < barrier.grid.length; r++) {
+      for (let c = 0; c < barrier.grid[r].length; c++) {
+        if (barrier.grid[r][c] === 1) {
+          ctx.fillStyle = "#0f0";
+          ctx.fillRect(
+            barrier.x + c * ps,
+            barrier.y + r * ps,
+            ps,
+            ps
+          );
+        }
+      }
+    }
+  });
+}
+
+function drawBoss() {
+  if (!boss) return;
+
+  drawSprite(enemy1, boss.x, boss.y, 4, "#f0f");
+
+  bossMinions.forEach(m => {
+    if (!m.alive) return;
+    drawSprite(enemy2, m.x, m.y, 4, "#f88");
+  });
+
+  const barWidth = 300;
+  const barHeight = 12;
+  const x = (W - barWidth) / 2;
+  const y = 20;
+
+  ctx.fillStyle = "#333";
+  ctx.fillRect(x, y, barWidth, barHeight);
+
+  const hpRatio = boss.hp / boss.maxHp;
+  ctx.fillStyle = "#f00";
+  ctx.fillRect(x, y, barWidth * hpRatio, barHeight);
+
+  ctx.fillStyle = "#0f0";
+  ctx.font = "12px 'Press Start 2P'";
+  ctx.textAlign = "center";
+  ctx.fillText("BOSS HP", W / 2, y - 5);
+}
+
+function drawPowerUps() {
+  powerUps.forEach(p => {
+    let sprite, color;
+    if (p.type === "rapid") { sprite = puRapidSprite; color = "#ff0"; }
+    else if (p.type === "life") { sprite = puLifeSprite; color = "#f00"; }
+    else if (p.type === "triple") { sprite = puTripleSprite; color = "#0ff"; }
+    else if (p.type === "shield") { sprite = puShieldSprite; color = "#0af"; }
+    else if (p.type === "slow") { sprite = puSlowSprite; color = "#f0f"; }
+
+    drawSprite(sprite, p.x, p.y, 3, color);
+  });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (shieldActive) {
+    ctx.strokeStyle = "#0af";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(player.x - 4, player.y - 4, player.w + 8, player.h + 8);
+  }
+
+  drawSprite(playerSprite, player.x, player.y, 4, "#0f0");
+
+  bullets.forEach(b => drawSprite(bulletSprite, b.x, b.y, 4, "#ff0"));
+  enemyBullets.forEach(b => drawSprite(enemyBulletSprite, b.x, b.y, 4, "#0ff"));
+
+  if (mode === "normal") {
+    invaders.forEach(inv => {
+      if (inv.alive) drawSprite(frameToggle ? enemy1 : enemy2, inv.x, inv.y, 4, "#f00");
+    });
+  } else {
+    drawBoss();
+  }
+
+  drawBarriers();
+  drawPowerUps();
+
+  if (gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = "#0f0";
+    ctx.font = "32px 'Press Start 2P'";
+    ctx.textAlign = "center";
+    ctx.fillText("GAME OVER", W / 2, H / 2);
+
+    restartBtn.style.display = "inline-block";
+  } else {
+    restartBtn.style.display = "none";
+  }
+}
+
+//
+// MAIN LOOP
+//
+
+function loop(timestamp) {
+  update(timestamp);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+init();
+loop();
+
+//
+// RESTART BUTTON
+//
+
+restartBtn.onclick = () => {
+  stopMusic();
+  startMusic();
+  init();
+};
+
+</script>
+
+</body>
+</html>
