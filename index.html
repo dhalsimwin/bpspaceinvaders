@@ -174,6 +174,10 @@
     <div class="bar-label">SLO-MO</div>
     <div class="bar-container"><div class="bar-fill" id="slowBar"></div></div>
   </div>
+  <div>
+    <div class="bar-label">SHIELD</div>
+    <div class="bar-container"><div class="bar-fill" id="shieldBar"></div></div>
+  </div>
 </div>
 
 <!-- SLIDER -->
@@ -204,6 +208,7 @@ const uiLevel = document.getElementById("rightUI");
 const rapidBar = document.getElementById("rapidBar");
 const tripleBar = document.getElementById("tripleBar");
 const slowBar = document.getElementById("slowBar");
+const shieldBar = document.getElementById("shieldBar");
 
 const shieldReadyText = document.getElementById("shieldReady");
 const highScoreDisplay = document.getElementById("highScoreDisplay");
@@ -216,6 +221,17 @@ const shootBtn = document.getElementById("shootBtn");
 
 const W = canvas.width;
 const H = canvas.height;
+
+let selectedShip = 0;
+let gameStarted = false;
+const shipTypes = [
+ {name:"Tank",desc:"Grants 5 lives"},
+ {name:"Heavy",desc:"Fires huge bullets"},
+ {name:"Scout",desc:"Super quick"},
+ {name:"Gunner",desc:"Fires quickly"},
+ {name:"Laser",desc:"Fires lasers"}
+];
+
 
 /* HIGH SCORE */
 let highScore = 0;
@@ -349,9 +365,7 @@ let rapidEnergy = 0;
 let rapidActive = false;
 const rapidDrainPerShot = 1 / 60;
 
-let tripleActive = false;
-let tripleTimer = 0;
-const tripleDuration = 15000;
+let tripleShots = 0;
 
 let shieldCharges = 0;
 let shieldActive = false;
@@ -364,6 +378,9 @@ const slowDuration = 15000;
 let slowFactor = 1.0;
 
 let barriers = [];
+let highScoreChecked = false;
+let hitFlashTimer = 0;
+let screenShakeTimer = 0;
 
 
 
@@ -388,7 +405,7 @@ function createBarriers() {
 
   for (let i = 0; i < 4; i++) {
     const x = spacing + i * (bw + spacing);
-    const y = H - 220;
+    const y = H - 145;
     barriers.push({
       x,
       y,
@@ -476,9 +493,9 @@ function setupBossLevel() {
   bossType = ((Math.floor(level / 5) - 1) % 4) + 1;
 
   if (bossType === 1) {
-    boss = { x: W/2-80, y:120, w:160, h:80, hp:100, maxHp:100, speedX:1, speedY:0.2, shootRate:0.015 };
+    boss = { x: W/2-80, y:120, w:160, h:80, hp:50, maxHp:50, speedX:1, speedY:0.2, shootRate:0.08 };
   } else if (bossType === 2) {
-    boss = { x: W/2-70, y:120, w:140, h:70, hp:85, maxHp:85, speedX:1.2, speedY:0.15, shootRate:0.012 };
+    boss = { x: W/2-70, y:120, w:140, h:70, hp:42, maxHp:42, speedX:1.2, speedY:0.15, shootRate:0.07 };
     bossMinions = [];
     const mW = 11*4, mH = 8*4;
     bossMinions.push({ x: boss.x - mW - 10, y: boss.y + boss.h + 10, w:mW, h:mH, alive:true });
@@ -486,9 +503,9 @@ function setupBossLevel() {
     bossMinions.push({ x: boss.x - mW - 10, y: boss.y - mH - 10, w:mW, h:mH, alive:true });
     bossMinions.push({ x: boss.x + boss.w + 10, y: boss.y - mH - 10, w:mW, h:mH, alive:true });
   } else if (bossType === 3) {
-    boss = { x: W/2-60, y:120, w:120, h:60, hp:70, maxHp:70, speedX:2.5, speedY:0.25, shootRate:0.02 };
+    boss = { x: W/2-60, y:120, w:120, h:60, hp:35, maxHp:35, speedX:2.5, speedY:0.25, shootRate:0.10 };
   } else if (bossType === 4) {
-    boss = { x:0, y:120, w:140, h:60, hp:80, maxHp:80, speedX:2, speedY:0, shootRate:0.018 };
+    boss = { x:0, y:120, w:140, h:60, hp:40, maxHp:40, speedX:2, speedY:0, shootRate:0.09 };
   }
 
   mode = "boss";
@@ -509,17 +526,18 @@ function init() {
     y: H - 100,
     w: 11*4,
     h: 8*4,
-    speed: 6,
+    speed: (selectedShip===2?10:6),
     canShoot: true,
-    baseCooldown: 375,
-    cooldown: 375
+    baseCooldown: (selectedShip===3?180:375),
+    cooldown:(selectedShip===3?180:375)
   };
 
   bullets = [];
   enemyBullets = [];
   score = 0;
-  lives = 3;
+  lives = (selectedShip===0?5:3);
   gameOver = false;
+  highScoreChecked = false;
 
   frameToggle = false;
   lastFrameSwitch = 0;
@@ -625,8 +643,7 @@ function applyPowerUp(pu) {
   } else if (pu.type === "life") {
     lives = Math.min(5, lives + 1);
   } else if (pu.type === "triple") {
-    tripleActive = true;
-    tripleTimer = tripleDuration;
+    tripleShots += 100;
   } else if (pu.type === "shield") {
     shieldCharges = Math.min(3, (shieldCharges || 0) + 1);
   } else if (pu.type === "slow") {
@@ -668,22 +685,27 @@ function shoot() {
   if (!player.canShoot) return;
 
   const baseBullet = () => ({
+    laser:selectedShip===4,
+    pierce: selectedShip===4 ? 2 : 0,
     x: player.x + player.w/2 - 6,
     y: player.y,
     w: 3*4,
     h: 6*4,
-    speed: 8
+    speed: selectedShip===4?2:(selectedShip===2?12:8)
   });
 
-  if (tripleActive) {
+  if (tripleShots > 0) {
     const b1 = baseBullet();
     const b2 = baseBullet();
     const b3 = baseBullet();
     b2.x -= 10;
     b3.x += 10;
     bullets.push(b1, b2, b3);
+    tripleShots--;
   } else {
-    bullets.push(baseBullet());
+    const b=baseBullet();
+    if(selectedShip===1){ b.w*=3; b.h*=2; }
+    bullets.push(b);
   }
 
   sndShoot();
@@ -717,13 +739,18 @@ function enemyShoot(inv) {
 
 function enemyShootBoss() {
   if (!boss) return;
-  enemyBullets.push({
-    x: boss.x + boss.w/2 - 6,
-    y: boss.y + boss.h,
-    w: 3*4,
-    h: 6*4,
-    speed: 5 * slowFactor
+
+  [-2,-1,0,1,2].forEach(a => {
+    enemyBullets.push({
+      x: boss.x + boss.w/2 - 6,
+      y: boss.y + boss.h,
+      w: 3*4,
+      h: 6*4,
+      speed: 5 * slowFactor,
+      vx: a
+    });
   });
+
   sndEnemyShoot();
 }
 
@@ -742,7 +769,7 @@ function updateNormal(timestamp) {
     invaders.forEach(inv => {
       if (!inv.alive) return;
       inv.y += dy;
-      if (inv.y + inv.h >= player.y) gameOver = true;
+      if (inv.y + inv.h >= player.y) { gameOver = true; checkHighScore(); }
     });
   }
 
@@ -755,9 +782,14 @@ function updateNormal(timestamp) {
       if (!inv.alive) return;
       if (collide(b, inv)) {
         inv.alive = false;
-        bullets.splice(bi, 1);
         score += 100;
         sndHit();
+        if (b.laser) {
+          b.pierce--;
+          if (b.pierce < 0) bullets.splice(bi,1);
+        } else {
+          bullets.splice(bi,1);
+        }
       }
     });
   });
@@ -779,7 +811,7 @@ function updateBoss(timestamp) {
 
   if (boss.x <= 0 || boss.x + boss.w >= W) boss.speedX *= -1;
 
-  if (bossType !== 4 && boss.y + boss.h >= player.y) gameOver = true;
+  if (bossType !== 4 && boss.y + boss.h >= player.y) { gameOver = true; checkHighScore(); }
 
   if (Math.random() < boss.shootRate * slowFactor) enemyShootBoss();
 
@@ -800,7 +832,7 @@ function updateBoss(timestamp) {
   bullets.forEach((b, bi) => {
     if (boss && collide(b, boss)) {
       bullets.splice(bi, 1);
-      boss.hp--;
+      boss.hp -= (b.laser ? 2 : 1); if(b.laser){ if(--b.pierce>=0) return; }
       score += 250;
       sndHit();
       if (boss.hp <= 0) {
@@ -817,8 +849,13 @@ function updateBoss(timestamp) {
         if (!m.alive) return;
         if (collide(b, m)) {
           m.alive = false;
-          bullets.splice(bi, 1);
           score += 150;
+          if (b.laser) {
+            b.pierce--;
+            if (b.pierce < 0) bullets.splice(bi,1);
+          } else {
+            bullets.splice(bi,1);
+          }
           sndHit();
         }
       });
@@ -828,6 +865,7 @@ function updateBoss(timestamp) {
 
 /* UPDATE LOOP */
 function update(timestamp) {
+  if (!gameStarted) return;
   if (gameOver) return;
 
   if (timestamp - lastFrameSwitch > 300) {
@@ -836,6 +874,8 @@ function update(timestamp) {
   }
 
   const delta = 16;
+  if (hitFlashTimer > 0) hitFlashTimer -= delta;
+  if (screenShakeTimer > 0) screenShakeTimer -= delta;
 
   if (left) player.x -= player.speed;
   if (right) player.x += player.speed;
@@ -860,6 +900,7 @@ function update(timestamp) {
 
   enemyBullets.forEach((b, i) => {
     b.y += b.speed;
+    b.x += (b.vx || 0);
 
     if (bulletHitsBarrier(b)) {
       enemyBullets.splice(i, 1);
@@ -875,20 +916,15 @@ function update(timestamp) {
       enemyBullets.splice(i, 1);
       lives--;
       sndHit();
+      hitFlashTimer = 300;
+      screenShakeTimer = 300;
       if (lives <= 0) {
         sndDeath();
         gameOver = true;
+        checkHighScore();
       }
     }
   });
-
-  if (tripleActive) {
-    tripleTimer -= delta;
-    if (tripleTimer <= 0) {
-      tripleActive = false;
-      tripleTimer = 0;
-    }
-  }
 
   if (shieldActive) {
     shieldTimer -= delta;
@@ -921,7 +957,8 @@ function update(timestamp) {
     (!shieldActive && shieldCharges > 0) ? "block" : "none";
 
   rapidBar.style.width = (rapidEnergy * 100) + "%";
-  tripleBar.style.width = tripleActive ? (tripleTimer / tripleDuration * 100) + "%" : "0%";
+  tripleBar.style.width = Math.min(100, tripleShots) + "%";
+  shieldBar.style.width = shieldActive ? (shieldTimer / shieldDuration * 100) + "%" : "0%";
   slowBar.style.width = slowActive ? (slowTimer / slowDuration * 100) + "%" : "0%";
 }
 
@@ -997,7 +1034,29 @@ function drawPowerUps() {
 }
 
 function draw() {
+  if(!gameStarted){
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle="#0f0";
+    ctx.font="20px 'Press Start 2P'";
+    ctx.textAlign="center";
+    ctx.fillText("SELECT SHIP",W/2,60);
+    ctx.font="60px Arial";
+    ctx.fillText("<",50,300);
+    ctx.fillText(">",550,300);
+    ctx.strokeStyle="#0f0";
+    ctx.strokeRect(250,180,100,60);
+    ctx.font="14px 'Press Start 2P'";
+    ctx.fillText(shipTypes[selectedShip].name,W/2,290);
+    ctx.fillText(shipTypes[selectedShip].desc,W/2,350);
+    ctx.strokeRect(220,500,160,50);
+    ctx.fillText("SELECT SHIP",300,532);
+    return;
+  }
   ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  if (screenShakeTimer > 0) {
+    ctx.translate((Math.random()-0.5)*8, (Math.random()-0.5)*8);
+  }
 
   if (shieldActive) {
     ctx.strokeStyle = "#0af";
@@ -1007,7 +1066,13 @@ function draw() {
 
   drawSprite(playerSprite, player.x, player.y, 4, "#0f0");
 
-  bullets.forEach(b => drawSprite(bulletSprite, b.x, b.y, 4, "#ff0"));
+  bullets.forEach(b => {
+ if(b.laser){ ctx.fillStyle="#ff0"; ctx.fillRect(b.x+5,b.y,1,40); }
+ else if(selectedShip===1){
+  ctx.fillStyle="#ff0";
+  ctx.fillRect(b.x-6,b.y,24,20);
+} else drawSprite(bulletSprite,b.x,b.y,4,"#ff0");
+});
   enemyBullets.forEach(b => drawSprite(enemyBulletSprite, b.x, b.y, 4, "#0ff"));
 
   if (mode === "normal") {
@@ -1020,6 +1085,13 @@ function draw() {
 
   drawBarriers();
   drawPowerUps();
+
+  if (hitFlashTimer > 0) {
+    ctx.fillStyle = "rgba(255,0,0," + (hitFlashTimer/300)*0.5 + ")";
+    ctx.fillRect(0,0,W,H);
+  }
+
+  ctx.restore();
 
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -1038,6 +1110,9 @@ function draw() {
 
 /* HIGH SCORE CHECK */
 function checkHighScore() {
+  if (highScoreChecked) return;
+  highScoreChecked = true;
+
   if (score > highScore) {
     const name = prompt("NEW HIGH SCORE! Enter your name:");
     highScore = score;
@@ -1057,14 +1132,28 @@ function loop(timestamp) {
   requestAnimationFrame(loop);
 }
 
-init();
+
+document.addEventListener('keydown',e=>{
+ if(!gameStarted){
+   if(e.code==='ArrowLeft') selectedShip=(selectedShip+4)%5;
+   if(e.code==='ArrowRight') selectedShip=(selectedShip+1)%5;
+ }
+});
+canvas.addEventListener('click',e=>{
+ if(!gameStarted){
+   const x=e.offsetX,y=e.offsetY;
+   if(x>220&&x<380&&y>500&&y<550){gameStarted=true;init();}
+   if(x<80) selectedShip=(selectedShip+4)%5;
+   if(x>520) selectedShip=(selectedShip+1)%5;
+ }
+});
 loop();
+
 
 /* RESTART BUTTON */
 restartBtn.onclick = () => {
   stopMusic();
   startMusic();
-  checkHighScore();
   init();
 };
 </script>
