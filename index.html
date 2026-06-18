@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Space Invaders (Final Version)</title>
+<title>Space Invaders (Final Slider + Shield)</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 
@@ -75,6 +75,64 @@
     width: 0%;
   }
 
+  /* SLIDER */
+  #touchSliderContainer {
+    width: 600px;
+    margin-top: 18px;
+    display: flex;
+    justify-content: center;
+  }
+
+  #touchSlider {
+    width: 100%;
+    height: 36px;
+    -webkit-appearance: none;
+    background: #222;
+    border: 2px solid #0f0;
+    border-radius: 10px;
+  }
+
+  #touchSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 60px;
+    height: 36px;
+    background: #0f0;
+    border-radius: 6px;
+  }
+
+  /* SHIELD BUTTON (SMALL, CENTRED) */
+  #shieldButtonContainer {
+    width: 600px;
+    margin-top: 14px;
+    display: flex;
+    justify-content: center;
+  }
+
+  #shieldBtn {
+    padding: 12px 28px;
+    background: #0f0;
+    border: 3px solid #030;
+    font-size: 16px;
+    font-family: "Press Start 2P", monospace;
+    cursor: pointer;
+  }
+
+  #shootButtonContainer {
+    width: 600px;
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+  }
+
+  #shootBtn {
+    padding: 12px 28px;
+    background: #ff0;
+    border: 3px solid #880;
+    font-size: 16px;
+    font-family: "Press Start 2P", monospace;
+    cursor: pointer;
+  }
+
   #restartBtn {
     margin-top: 15px;
     padding: 10px 25px;
@@ -118,13 +176,24 @@
   </div>
 </div>
 
+<!-- SLIDER -->
+<div id="touchSliderContainer">
+  <input type="range" id="touchSlider" min="0" max="100" value="50">
+</div>
+
+<!-- SHIELD BUTTON (SMALL, CENTRED) -->
+<div id="shieldButtonContainer">
+  <button id="shieldBtn">SHIELD</button>
+</div>
+
+<div id="shootButtonContainer">
+  <button id="shootBtn">SHOOT</button>
+</div>
+
 <button id="restartBtn">RESTART</button>
 
 <script>
-//
-// CANVAS + UI REFERENCES
-//
-
+/* CANVAS + UI */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -141,13 +210,14 @@ const highScoreDisplay = document.getElementById("highScoreDisplay");
 
 const restartBtn = document.getElementById("restartBtn");
 
+const slider = document.getElementById("touchSlider");
+const shieldBtn = document.getElementById("shieldBtn");
+const shootBtn = document.getElementById("shootBtn");
+
 const W = canvas.width;
 const H = canvas.height;
 
-//
-// HIGH SCORE SYSTEM
-//
-
+/* HIGH SCORE */
 let highScore = 0;
 let highScoreName = "NONE";
 
@@ -159,27 +229,21 @@ if (localStorage.getItem("si_highscore")) {
 function updateHighScoreDisplay() {
   highScoreDisplay.textContent = `HIGH SCORE: ${highScore} — ${highScoreName}`;
 }
-
 updateHighScoreDisplay();
 
-//
-// AUDIO
-//
-
+/* AUDIO */
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
 function playBeep(freq, duration, type="square", volume=0.25) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    gain.gain.value = volume;
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + duration);
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.value = volume;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
 }
-
 function sndShoot() { playBeep(900, 0.07, "square", 0.25); }
 function sndEnemyShoot() { playBeep(500, 0.12, "sawtooth", 0.2); }
 function sndHit() { playBeep(120, 0.05, "square", 0.6); }
@@ -187,29 +251,23 @@ function sndDeath() { playBeep(80, 0.25, "triangle", 0.3); }
 function sndPower() { playBeep(700, 0.12, "triangle", 0.35); }
 
 let musicInterval = null;
-
 function startMusic() {
-    if (musicInterval) return;
-    musicInterval = setInterval(() => {
-        playBeep(220, 0.1, "square", 0.075);
-        setTimeout(() => playBeep(330, 0.1, "square", 0.075), 120);
-        setTimeout(() => playBeep(180, 0.1, "square", 0.075), 240);
-    }, 400);
+  if (musicInterval) return;
+  musicInterval = setInterval(() => {
+    playBeep(220, 0.1, "square", 0.075);
+    setTimeout(() => playBeep(330, 0.1, "square", 0.075), 120);
+    setTimeout(() => playBeep(180, 0.1, "square", 0.075), 240);
+  }, 400);
 }
-
 function stopMusic() {
-    if (!musicInterval) return;
-    clearInterval(musicInterval);
-    musicInterval = null;
+  if (!musicInterval) return;
+  clearInterval(musicInterval);
+  musicInterval = null;
 }
-
 document.addEventListener("keydown", startMusic);
 document.addEventListener("click", startMusic);
 
-//
-// SPRITES
-//
-
+/* SPRITES */
 const playerSprite = [
 "00000100000",
 "00001110000",
@@ -246,16 +304,11 @@ const enemy2 = [
 const bulletSprite = ["010","111","111","111","010","010"];
 const enemyBulletSprite = ["010","010","111","010","010"];
 
-// POWER-UP SPRITES (FIXED)
 const puRapidSprite = ["00100","01110","11111","01110","00100"];
 const puLifeSprite = ["010010","111111","111111","011110","001100"];
 const puTripleSprite = ["00100","01110","10101","00100","00100"];
 const puShieldSprite = ["01110","10001","10001","11111","01110"];
 const puSlowSprite = ["00100","01110","11111","01110","00100"];
-
-//
-// BARRIER SHAPE
-//
 
 const barrierSprite = [
 "000000111111000000",
@@ -271,10 +324,8 @@ const barrierSprite = [
 "111000000000000111",
 "110000000000000011"
 ];
-//
-// GAME STATE
-//
 
+/* GAME STATE */
 let player, bullets, enemyBullets, invaders;
 let dx, dy, gameOver, lives, frameToggle, lastFrameSwitch;
 let score = 0;
@@ -314,10 +365,9 @@ let slowFactor = 1.0;
 
 let barriers = [];
 
-//
-// BARRIERS
-//
 
+
+/* BARRIERS */
 function createBarrierGrid(sprite) {
   const grid = [];
   for (let r = 0; r < sprite.length; r++) {
@@ -332,7 +382,6 @@ function createBarrierGrid(sprite) {
 
 function createBarriers() {
   barriers = [];
-
   const ps = 3;
   const bw = barrierSprite[0].length * ps;
   const spacing = (W - 4 * bw) / 5;
@@ -340,7 +389,6 @@ function createBarriers() {
   for (let i = 0; i < 4; i++) {
     const x = spacing + i * (bw + spacing);
     const y = H - 220;
-
     barriers.push({
       x,
       y,
@@ -351,12 +399,12 @@ function createBarriers() {
 }
 
 function bulletHitsBarrier(bullet) {
+  const damageRadius = 2;
+
   for (let b = 0; b < barriers.length; b++) {
     const barrier = barriers[b];
-
     const relX = bullet.x - barrier.x;
     const relY = bullet.y - barrier.y;
-
     if (relX < 0 || relY < 0) continue;
 
     const c = Math.floor(relX / barrier.pixelSize);
@@ -364,41 +412,36 @@ function bulletHitsBarrier(bullet) {
 
     if (
       r >= 0 && r < barrier.grid.length &&
-      c >= 0 && c < barrier.grid[0].length
+      c >= 0 && c < barrier.grid[0].length &&
+      barrier.grid[r][c] === 1
     ) {
-      if (barrier.grid[r][c] === 1) {
-
-    // destroy a 3×3 chunk around the hit pixel
-    for (let rr = r - 1; rr <= r + 1; rr++) {
-        for (let cc = c - 1; cc <= c + 1; cc++) {
-            if (
-                rr >= 0 && rr < barrier.grid.length &&
-                cc >= 0 && cc < barrier.grid[0].length
-            ) {
-                barrier.grid[rr][cc] = 0;
+      for (let rr = r - damageRadius; rr <= r + damageRadius; rr++) {
+        for (let cc = c - damageRadius; cc <= c + damageRadius; cc++) {
+          if (
+            rr >= 0 && rr < barrier.grid.length &&
+            cc >= 0 && cc < barrier.grid[0].length
+          ) {
+            const dx = cc - c;
+            const dy = rr - r;
+            if (dx * dx + dy * dy <= damageRadius * damageRadius) {
+              barrier.grid[rr][cc] = 0;
             }
+          }
         }
-    }
-
-    return true;
-}
-
+      }
+      return true;
     }
   }
   return false;
 }
 
-//
-// LEVEL SETUP
-//
-
+/* LEVEL SETUP */
 function setupNormalLevel() {
   invaders = [];
   const rows = 4, cols = 8;
   const invW = 11 * 4;
   const invH = 8 * 4;
   const padding = 20;
-
   const offsetTop = 40;
   const offsetLeft = 40;
 
@@ -449,7 +492,6 @@ function setupBossLevel() {
   }
 
   mode = "boss";
-
   createBarriers();
 }
 
@@ -458,10 +500,7 @@ function setupLevel() {
   else setupNormalLevel();
 }
 
-//
-// INIT (RESTORED)
-//
-
+/* INIT */
 function init() {
   level = 1;
 
@@ -494,12 +533,10 @@ function init() {
   lastPowerUpTime = performance.now();
 
   restartBtn.style.display = "none";
+  slider.value = 50;
 }
 
-//
-// INPUT
-//
-
+/* INPUT */
 let left = false, right = false, space = false, shieldKey = false;
 
 document.addEventListener("keydown", e => {
@@ -516,10 +553,38 @@ document.addEventListener("keyup", e => {
   if (e.code === "KeyS") shieldKey = false;
 });
 
-//
-// POWER-UPS
-//
+/* SLIDER → PLAYER MOVEMENT */
+slider.addEventListener("input", () => {
+  const v = Number(slider.value); // 0–100
+  player.x = (v / 100) * (W - player.w);
+});
 
+/* SHIELD BUTTON */
+shieldBtn.addEventListener("touchstart", () => {
+  if (!shieldActive && shieldCharges > 0) {
+    shieldActive = true;
+    shieldTimer = shieldDuration;
+    shieldCharges--;
+  }
+});
+shieldBtn.addEventListener("mousedown", () => {
+  if (!shieldActive && shieldCharges > 0) {
+    shieldActive = true;
+    shieldTimer = shieldDuration;
+    shieldCharges--;
+  }
+});
+
+shootBtn.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  shoot();
+});
+
+shootBtn.addEventListener("mousedown", () => {
+  shoot();
+});
+
+/* POWER-UPS */
 function spawnPowerUp(now) {
   if (mode === "boss") return;
 
@@ -588,10 +653,7 @@ function updatePowerUps(delta) {
   });
 }
 
-//
-// COLLISION
-//
-
+/* COLLISION */
 function collide(a, b) {
   return (
     a.x < b.x + b.w &&
@@ -600,10 +662,8 @@ function collide(a, b) {
     a.y + a.h > b.y
   );
 }
-//
-// SHOOTING
-//
 
+/* SHOOTING */
 function shoot() {
   if (!player.canShoot) return;
 
@@ -643,10 +703,7 @@ function shoot() {
   setTimeout(() => player.canShoot = true, player.cooldown);
 }
 
-//
-// ENEMY SHOOTING
-//
-
+/* ENEMY SHOOTING */
 function enemyShoot(inv) {
   enemyBullets.push({
     x: inv.x + inv.w/2 - 6,
@@ -670,10 +727,7 @@ function enemyShootBoss() {
   sndEnemyShoot();
 }
 
-//
-// UPDATE NORMAL LEVEL
-//
-
+/* UPDATE NORMAL LEVEL */
 function updateNormal(timestamp) {
   let hitEdge = false;
 
@@ -716,10 +770,7 @@ function updateNormal(timestamp) {
   }
 }
 
-//
-// UPDATE BOSS LEVEL
-//
-
+/* UPDATE BOSS LEVEL */
 function updateBoss(timestamp) {
   if (!boss) return;
 
@@ -775,10 +826,7 @@ function updateBoss(timestamp) {
   });
 }
 
-//
-// UPDATE LOOP
-//
-
+/* UPDATE LOOP */
 function update(timestamp) {
   if (gameOver) return;
 
@@ -803,12 +851,10 @@ function update(timestamp) {
 
   bullets.forEach((b, i) => {
     b.y -= b.speed;
-
     if (bulletHitsBarrier(b)) {
       bullets.splice(i, 1);
       return;
     }
-
     if (b.y < -20) bullets.splice(i, 1);
   });
 
@@ -832,7 +878,6 @@ function update(timestamp) {
       if (lives <= 0) {
         sndDeath();
         gameOver = true;
-	checkHighScore();
       }
     }
   });
@@ -880,33 +925,13 @@ function update(timestamp) {
   slowBar.style.width = slowActive ? (slowTimer / slowDuration * 100) + "%" : "0%";
 }
 
-//
-// HIGH SCORE CHECK
-//
-
-function checkHighScore() {
-  if (score > highScore) {
-    const name = prompt("NEW HIGH SCORE! Enter your name:");
-    highScore = score;
-    highScoreName = name || "UNKNOWN";
-
-    localStorage.setItem("si_highscore", highScore);
-    localStorage.setItem("si_highscore_name", highScoreName);
-
-    updateHighScoreDisplay();
-  }
-}
-
-//
-// DRAWING
-//
-
-function drawSprite(sprite, x, y, scale, color) {
+/* DRAWING */
+function drawSprite(sprite, x, y, scale, color="#0f0") {
   ctx.fillStyle = color;
   for (let r = 0; r < sprite.length; r++) {
     for (let c = 0; c < sprite[r].length; c++) {
       if (sprite[r][c] === "1") {
-        ctx.fillRect(x + c * scale, y + r * scale, scale, scale);
+        ctx.fillRect(x + c*scale, y + r*scale, scale, scale);
       }
     }
   }
@@ -937,8 +962,7 @@ function drawBoss() {
   drawSprite(enemy1, boss.x, boss.y, 4, "#f0f");
 
   bossMinions.forEach(m => {
-    if (!m.alive) return;
-    drawSprite(enemy2, m.x, m.y, 4, "#f88");
+    if (m.alive) drawSprite(enemy2, m.x, m.y, 4, "#f88");
   });
 
   const barWidth = 300;
@@ -1012,10 +1036,21 @@ function draw() {
   }
 }
 
-//
-// MAIN LOOP
-//
+/* HIGH SCORE CHECK */
+function checkHighScore() {
+  if (score > highScore) {
+    const name = prompt("NEW HIGH SCORE! Enter your name:");
+    highScore = score;
+    highScoreName = name || "UNKNOWN";
 
+    localStorage.setItem("si_highscore", highScore);
+    localStorage.setItem("si_highscore_name", highScoreName);
+
+    updateHighScoreDisplay();
+  }
+}
+
+/* MAIN LOOP */
 function loop(timestamp) {
   update(timestamp);
   draw();
@@ -1025,17 +1060,13 @@ function loop(timestamp) {
 init();
 loop();
 
-//
-// RESTART BUTTON
-//
-
+/* RESTART BUTTON */
 restartBtn.onclick = () => {
   stopMusic();
   startMusic();
+  checkHighScore();
   init();
 };
-
 </script>
-
 </body>
 </html>
