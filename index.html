@@ -476,9 +476,9 @@ function setupBossLevel() {
   bossType = ((Math.floor(level / 5) - 1) % 4) + 1;
 
   if (bossType === 1) {
-    boss = { x: W/2-80, y:120, w:160, h:80, hp:25, maxHp:25, speedX:1, speedY:0.2, shootRate:0.015 };
+    boss = { x: W/2-80, y:120, w:160, h:80, hp:100, maxHp:100, speedX:1, speedY:0.2, shootRate:0.015 };
   } else if (bossType === 2) {
-    boss = { x: W/2-70, y:120, w:140, h:70, hp:20, maxHp:20, speedX:1.2, speedY:0.15, shootRate:0.012 };
+    boss = { x: W/2-70, y:120, w:140, h:70, hp:85, maxHp:85, speedX:1.2, speedY:0.15, shootRate:0.012 };
     bossMinions = [];
     const mW = 11*4, mH = 8*4;
     bossMinions.push({ x: boss.x - mW - 10, y: boss.y + boss.h + 10, w:mW, h:mH, alive:true });
@@ -486,9 +486,9 @@ function setupBossLevel() {
     bossMinions.push({ x: boss.x - mW - 10, y: boss.y - mH - 10, w:mW, h:mH, alive:true });
     bossMinions.push({ x: boss.x + boss.w + 10, y: boss.y - mH - 10, w:mW, h:mH, alive:true });
   } else if (bossType === 3) {
-    boss = { x: W/2-60, y:120, w:120, h:60, hp:15, maxHp:15, speedX:2.5, speedY:0.25, shootRate:0.02 };
+    boss = { x: W/2-60, y:120, w:120, h:60, hp:70, maxHp:70, speedX:2.5, speedY:0.25, shootRate:0.02 };
   } else if (bossType === 4) {
-    boss = { x:0, y:120, w:140, h:60, hp:18, maxHp:18, speedX:2, speedY:0, shootRate:0.018 };
+    boss = { x:0, y:120, w:140, h:60, hp:80, maxHp:80, speedX:2, speedY:0, shootRate:0.018 };
   }
 
   mode = "boss";
